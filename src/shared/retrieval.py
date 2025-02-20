@@ -69,8 +69,7 @@ def make_elastic_retriever(
         embedding=embedding_model,
     )
     # Debugging statements
-    print(f"search_kwargs: {configuration.search_kwargs}")
-    yield vstore.as_retriever(search_kwargs=configuration.search_kwargs)
+    yield vstore.as_retriever(search_kwargs={"key":"value"})
 
 
 @contextmanager
@@ -83,7 +82,7 @@ def make_pinecone_retriever(
     vstore = PineconeVectorStore.from_existing_index(
         os.environ["PINECONE_INDEX_NAME"], embedding=embedding_model
     )
-    yield vstore.as_retriever(search_kwargs=configuration.search_kwargs)
+    yield vstore.as_retriever(search_kwargs={"key":"value"})
 
 
 @contextmanager
@@ -98,7 +97,7 @@ def make_mongodb_retriever(
         namespace="langgraph_retrieval_agent.default",
         embedding=embedding_model,
     )
-    yield vstore.as_retriever(search_kwargs=configuration.search_kwargs)
+    yield vstore.as_retriever(search_kwargs={"key":"value"})
 
 
 @contextmanager

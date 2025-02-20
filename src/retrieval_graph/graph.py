@@ -7,11 +7,13 @@ conducting research, and formulating responses.
 """
 
 from typing import Any, Literal, TypedDict, cast
+import json
+from index_graph.configuration import IndexConfiguration
+from shared import retrieval
 
 from langchain_core.messages import BaseMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
-
 from retrieval_graph.configuration import AgentConfiguration
 from retrieval_graph.researcher_graph.graph import graph as researcher_graph
 from retrieval_graph.state import AgentState, InputState, Router
@@ -20,6 +22,8 @@ from pydantic import BaseModel
 from retrieval_graph.tools import TOOLS
 from langchain_core.messages import AIMessage
 from langgraph.prebuilt import ToolNode
+from shared.state import reduce_docs
+from langchain_core.documents import Document
 
 
 async def analyze_and_route_query(
@@ -249,6 +253,50 @@ def route_model_output(state: AgentState) -> Literal["__end__", "tools"]:
     # Otherwise we execute the requested actions
     return "tools"
 
+def convert_to_documents(doc_string: str) -> list[Document]:
+    """Convert a list of document dictionaries to a list of Document objects.
+
+    Args:
+        doc_dicts (list[dict[str, str]]): A list of document dictionaries with 'url' and 'content'.
+
+    Returns:
+        list[Document]: A list of Document objects with content and metadata.
+    """
+    doc_dicts = json.loads(doc_string)
+    documents = []
+    for doc_dict in doc_dicts:
+        # Create a Document object with content and metadata
+        document = Document(page_content=doc_dict["content"], metadata={"source": doc_dict["url"]})
+        documents.append(document)
+    return documents
+
+
+async def index_docs(
+    state: AgentState, *, config: RunnableConfig
+) -> dict[str, str]:
+    """Asynchronously index documents in the given state using the configured retriever.
+
+    This function takes the documents from the state, ensures they have a user ID,
+    adds them to the retriever's index, and then signals for the documents to be
+    deleted from the state.
+
+    If docs are not provided in the state, they will be loaded
+    from the configuration.docs_file JSON file.
+
+    Args:
+        state (IndexState): The current state containing documents and retriever.
+        config (Optional[RunnableConfig]): Configuration for the indexing process.r
+    """
+    if not config:
+        raise ValueError("Configuration required to run index_docs.")
+
+    configuration = IndexConfiguration.from_runnable_config(config)
+
+    with retrieval.make_retriever(config) as retriever:
+        await retriever.aadd_documents(convert_to_documents(state.messages[2].content))
+
+    return {"docs": "delete"}
+
 
 # Define the graph
 builder = StateGraph(AgentState, input=InputState, config_schema=AgentConfiguration)
@@ -263,6 +311,7 @@ builder.add_conditional_edges(
     "respond",
     route_model_output,
 )
+builder.add_node(index_docs)
 
 builder.add_edge(START, "analyze_and_route_query")
 builder.add_conditional_edges("analyze_and_route_query", route_query)
@@ -271,6 +320,7 @@ builder.add_conditional_edges("conduct_research", check_finished)
 builder.add_edge("ask_for_more_info", END)
 builder.add_edge("respond_to_general_query", END)
 builder.add_edge("respond", END)
+builder.add_edge("tools", "index_docs")
 builder.add_edge("tools", "respond")
 
 # Compile into a graph object that you can invoke and deploy.

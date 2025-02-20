@@ -5,6 +5,7 @@ It includes a basic Tavily search function (as an example)
 These tools are intended as free examples to get started. For production use,
 consider implementing more robust and specialized tools tailored to your needs.
 """
+from index_graph.graph import graph as index_graph
 
 from typing import Any, Callable, List, Optional, cast
 
@@ -28,7 +29,12 @@ async def web_search_tool(
     configuration = Configuration.from_runnable_config(config)
     wrapped = TavilySearchResults(max_results=10)
     result = await wrapped.ainvoke({"query": query})
-    return cast(list[dict[str, Any]], result)
+    result = cast(list[dict[str, Any]], result)
+    print(f"search    {result}")
+    # if result:
+    #         # Send the search results to the index graph
+    #         await index_graph.invoke({"documents": result})
+    return result
 
 
 TOOLS: List[Callable[..., Any]] = [web_search_tool]
